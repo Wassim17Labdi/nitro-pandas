@@ -122,10 +122,10 @@ class GroupBy:
                             f"Use 'mean', 'sum', 'min', 'max', or 'count'"
                         )
                 elif callable(func):
-                    # Apply callable function directly
-                    # Note: Polars requires return_dtype for UDFs (User Defined Functions)
-                    # Default to Float64 for numeric operations (e.g., lambda x: x.sum() / len(x))
-                    pl_expressions.append(pl.col(col).map_elements(func, return_dtype=pl.Float64))
+                    raise ValueError(
+                        f"Lambda functions are not supported in groupby.agg(). "
+                        f"Use string functions like 'mean', 'sum', 'min', 'max', or 'count'"
+                    )
                 else:
                     raise ValueError(f"Unsupported function type: {type(func)}")
             return DataFrame(self._gb.agg(pl_expressions))

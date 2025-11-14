@@ -192,10 +192,10 @@ def test_groupby_lazy():
 
 def test_groupby_agg_lambda():
     """
-    Test groupby with agg() using lambda expressions.
+    Test that groupby().agg() correctly rejects lambda functions.
     
-    This test verifies that groupby().agg() correctly handles lambda functions
-    via map_elements(), allowing custom Python functions to be applied.
+    Lambda functions are not supported in groupby.agg() - only string functions
+    like 'mean', 'sum', 'min', 'max', 'count' are supported.
     """
     # Create test DataFrame with numeric data
     df = npd.DataFrame({
@@ -204,91 +204,21 @@ def test_groupby_agg_lambda():
         'score': [100, 200, 300, 400, 150, 500]
     })
     
-    # Test 1: groupby().agg() with lambda that calculates mean manually: x.sum() / len(x)
-    result_mean_lambda = df.groupby("category").agg({
-        "value": lambda x: x.sum() / len(x)
+    # Test that lambda functions raise ValueError
+    try:
+        df.groupby("category").agg({
+            "value": lambda x: x.sum() / len(x)
+        })
+        assert False, "Lambda functions should raise ValueError"
+    except ValueError as e:
+        assert "Lambda functions are not supported" in str(e), f"Expected lambda error message, got: {e}"
+    
+    # Verify that string functions still work
+    result_mean = df.groupby("category").agg({
+        "value": "mean"
     })
-    assert isinstance(result_mean_lambda, npd.DataFrame), "groupby().agg() with lambda must return DataFrame"
-    assert "category" in result_mean_lambda.columns, "groupby().agg() must keep grouping column"
-    assert "value" in result_mean_lambda.columns, "groupby().agg() must create aggregated column"
+    assert isinstance(result_mean, npd.DataFrame), "groupby().agg() with string function must return DataFrame"
+    assert "category" in result_mean.columns, "groupby().agg() must keep grouping column"
+    assert "value" in result_mean.columns, "groupby().agg() must create aggregated column"
     
-    # Verify content: lambda calculates mean manually
-    # For category 'A': values are [10, 20, 15] -> sum = 45, len = 3 -> mean = 15.0
-    # For category 'B': values are [30, 40, 50] -> sum = 120, len = 3 -> mean = 40.0
-    pdf_result = result_mean_lambda.to_pandas()
-    assert pdf_result.shape[0] == 2, "groupby().agg() with lambda must return one row per group"
-    
-    # Verify the calculated means - exact values expected
-    result_dict = pdf_result.set_index('category')['value'].to_dict()
-    assert result_dict['A'] == 15.0, f"Category A mean should be exactly 15.0, got {result_dict['A']}"
-    assert result_dict['B'] == 40.0, f"Category B mean should be exactly 40.0, got {result_dict['B']}"
-    
-    # Alternative: verify using direct value access
-    category_a_row = pdf_result[pdf_result['category'] == 'A']
-    category_b_row = pdf_result[pdf_result['category'] == 'B']
-    assert category_a_row['value'].iloc[0] == 15.0, f"Category A value should be 15.0, got {category_a_row['value'].iloc[0]}"
-    assert category_b_row['value'].iloc[0] == 40.0, f"Category B value should be 40.0, got {category_b_row['value'].iloc[0]}"
-    
-    # Test 2: groupby().agg() with lambda x.sum() / len(x) on score column
-    result_score_mean = df.groupby("category").agg({
-        "score": lambda x: x.sum() / len(x)
-    })
-    assert isinstance(result_score_mean, npd.DataFrame), "groupby().agg() with lambda on score must return DataFrame"
-    assert "score" in result_score_mean.columns, "groupby().agg() must create score column"
-    
-    # Verify score means - exact values expected
-    # For category 'A': scores are [100, 200, 150] -> sum = 450, len = 3 -> mean = 150.0
-    # For category 'B': scores are [300, 400, 500] -> sum = 1200, len = 3 -> mean = 400.0
-    pdf_score = result_score_mean.to_pandas()
-    score_dict = pdf_score.set_index('category')['score'].to_dict()
-    assert score_dict['A'] == 150.0, f"Category A score mean should be exactly 150.0, got {score_dict['A']}"
-    assert score_dict['B'] == 400.0, f"Category B score mean should be exactly 400.0, got {score_dict['B']}"
-    
-    # Verify using direct row access
-    score_a_row = pdf_score[pdf_score['category'] == 'A']
-    score_b_row = pdf_score[pdf_score['category'] == 'B']
-    assert score_a_row['score'].iloc[0] == 150.0, f"Category A score should be 150.0, got {score_a_row['score'].iloc[0]}"
-    assert score_b_row['score'].iloc[0] == 400.0, f"Category B score should be 400.0, got {score_b_row['score'].iloc[0]}"
-    
-    # Test 3: groupby().agg() with multiple lambdas using x.sum() / len(x) on different columns
-    result_multi = df.groupby("category").agg({
-        "value": lambda x: x.sum() / len(x),
-        "score": lambda x: x.sum() / len(x)
-    })
-    assert isinstance(result_multi, npd.DataFrame), "groupby().agg() with multiple lambdas must return DataFrame"
-    assert "value" in result_multi.columns, "groupby().agg() must have value column"
-    assert "score" in result_multi.columns, "groupby().agg() must have score column"
-    assert result_multi.shape[0] == 2, "groupby().agg() must return one row per group"
-    
-    # Verify exact values for both columns
-    pdf_multi = result_multi.to_pandas()
-    multi_a = pdf_multi[pdf_multi['category'] == 'A'].iloc[0]
-    multi_b = pdf_multi[pdf_multi['category'] == 'B'].iloc[0]
-    assert multi_a['value'] == 15.0, f"Category A value should be 15.0, got {multi_a['value']}"
-    assert multi_a['score'] == 150.0, f"Category A score should be 150.0, got {multi_a['score']}"
-    assert multi_b['value'] == 40.0, f"Category B value should be 40.0, got {multi_b['value']}"
-    assert multi_b['score'] == 400.0, f"Category B score should be 400.0, got {multi_b['score']}"
-    
-    # Test 4: groupby().agg() with lambda x.sum() / len(x) and string function together
-    result_mixed = df.groupby("category").agg({
-        "value": lambda x: x.sum() / len(x),  # Lambda calculating mean
-        "score": "mean"  # String function (should give same result)
-    })
-    assert isinstance(result_mixed, npd.DataFrame), "groupby().agg() with mixed lambda and string must return DataFrame"
-    assert "value" in result_mixed.columns, "groupby().agg() must have value column"
-    assert "score" in result_mixed.columns, "groupby().agg() must have score column"
-    
-    # Verify that lambda mean and string mean give same results for score
-    pdf_mixed = result_mixed.to_pandas()
-    mixed_a = pdf_mixed[pdf_mixed['category'] == 'A'].iloc[0]
-    mixed_b = pdf_mixed[pdf_mixed['category'] == 'B'].iloc[0]
-    
-    # Verify lambda-calculated value column
-    assert mixed_a['value'] == 15.0, f"Category A value (lambda) should be 15.0, got {mixed_a['value']}"
-    assert mixed_b['value'] == 40.0, f"Category B value (lambda) should be 40.0, got {mixed_b['value']}"
-    
-    # Verify string function mean on score column
-    assert mixed_a['score'] == 150.0, f"Category A score (mean) should be 150.0, got {mixed_a['score']}"
-    assert mixed_b['score'] == 400.0, f"Category B score (mean) should be 400.0, got {mixed_b['score']}"
-    
-    print("OK Test groupby agg with lambda OK")
+    print("OK Test groupby agg lambda rejection OK")
