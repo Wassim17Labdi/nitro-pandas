@@ -21,5 +21,12 @@ dependencies = [
     "pyarrow>=20.0.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Wassim17Labdi/nitro-pandas"
+Repository = "https://github.com/Wassim17Labdi/nitro-pandas"
+Documentation = "https://github.com/Wassim17Labdi/nitro-pandas#readme"
+Issues = "https://github.com/Wassim17Labdi/nitro-pandas/issues"
+"Source Code" = "https://github.com/Wassim17Labdi/nitro-pandas"
+
 [tool.hatchling.build.targets.wheel]
 packages = ["nitro_pandas"]
