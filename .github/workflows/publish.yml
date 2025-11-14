@@ -28,14 +28,18 @@ jobs:
       
       - name: Install build tools
         run: |
-          uv tool install build twine
+          uv venv
+          source .venv/bin/activate
+          uv pip install build twine
       
       - name: Build package
         run: |
+          source .venv/bin/activate
           python -m build
       
       - name: Check package
         run: |
+          source .venv/bin/activate
           python -m twine check dist/*
       
       - name: Publish to PyPI
