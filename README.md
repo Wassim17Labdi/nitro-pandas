@@ -1,7 +1,7 @@
 
 <div align="center">
 
-![nitro-pandas Logo](docs/nitro-pandas-logo.png)
+![nitro-pandas Logo](https://raw.githubusercontent.com/Wassim17Labdi/nitro-pandas/main/docs/nitro-pandas-logo.png)
 
 **A high-performance pandas-like DataFrame library powered by Polars**
 
