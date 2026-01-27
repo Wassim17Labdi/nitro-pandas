@@ -551,8 +551,12 @@ class DataFrame:
         
         # Handle pandas Series boolean mask (from df['col'] > value)
         if isinstance(key, pd.Series):
-            mask_values = key.tolist()
-            mask = pl.Series("", mask_values).cast(pl.Boolean)
+            # Optimize: use numpy values directly if available (faster than tolist())
+            if hasattr(key, 'values') and isinstance(key.values, np.ndarray):
+                mask = pl.Series("", key.values).cast(pl.Boolean)
+            else:
+                mask_values = key.tolist()
+                mask = pl.Series("", mask_values).cast(pl.Boolean)
             return DataFrame(self._df.filter(mask))
         
         # Handle other boolean masks (Polars Series, numpy array, list)
@@ -1022,8 +1026,12 @@ class LocIndexer:
         import pandas as pd
         import numpy as np
         if isinstance(rows, pd.Series):
-            mask_values = rows.tolist()
-            mask = pl.Series("", mask_values).cast(pl.Boolean)
+            # Optimize: use numpy values directly if available (faster than tolist())
+            if hasattr(rows, 'values') and isinstance(rows.values, np.ndarray):
+                mask = pl.Series("", rows.values).cast(pl.Boolean)
+            else:
+                mask_values = rows.tolist()
+                mask = pl.Series("", mask_values).cast(pl.Boolean)
             if len(mask) != self.df._df.height:
                 raise ValueError(
                     f"Mask length {len(mask)} does not match DataFrame height {self.df._df.height}"
@@ -1035,8 +1043,13 @@ class LocIndexer:
         elif isinstance(rows, pd.DataFrame):
             # Convert DataFrame mask to row mask using any() per row
             # This filters rows where at least one column is True
-            mask_values = rows.any(axis=1).tolist()
-            mask = pl.Series("", mask_values).cast(pl.Boolean)
+            # Optimize: use numpy values directly if available
+            any_series = rows.any(axis=1)
+            if hasattr(any_series, 'values') and isinstance(any_series.values, np.ndarray):
+                mask = pl.Series("", any_series.values).cast(pl.Boolean)
+            else:
+                mask_values = any_series.tolist()
+                mask = pl.Series("", mask_values).cast(pl.Boolean)
             if len(mask) != self.df._df.height:
                 raise ValueError(
                     f"Mask length {len(mask)} does not match DataFrame height {self.df._df.height}"
@@ -1088,17 +1101,24 @@ class LocIndexer:
                     f"loc: unsupported row selection type: {type(rows)}. Error: {str(e)}"
                 )
 
-        # Process result and return appropriate type
+        # Process result and return appropriate type (Polars-first, avoid pandas when possible)
         if isinstance(result, pl.DataFrame):
-            pdf = result.to_pandas()
-            # Single value: return scalar
-            if pdf.shape == (1, 1):
-                return pdf.iloc[0, 0]
-            # Single column: return Series or scalar
+            height, width = result.height, result.width
+
+            # Single scalar
+            if height == 1 and width == 1:
+                return result.to_series(0)[0]
+
+            # Single column -> return Polars Series (Pandas-like Series semantics with .to_list())
             if pl_cols is not None and isinstance(pl_cols, list) and len(pl_cols) == 1:
-                s = pl.from_pandas(pdf.iloc[:, 0].reset_index(drop=True))
-                return s if len(s) != 1 else s.item()
+                series = result[pl_cols[0]]
+                if series.len() == 1:
+                    return series.to_list()[0]
+                return series
+
+            # General case: keep wrapped DataFrame (Polars backend)
             return DataFrame(result)
+
         return result
 
 
@@ -1156,21 +1176,27 @@ class ILocIndexer:
         else:
             raise NotImplementedError("iloc: unsupported column selection type")
         
-        # Use pandas for advanced indexing (handles edge cases better)
-        pdf = self.df._df.to_pandas()
-        result_pd = pdf.iloc[pl_rows][pl_cols]
-        import pandas as pd
-        
-        # Return appropriate type based on result shape
-        if isinstance(result_pd, pd.Series) and result_pd.shape == ():
-            return result_pd.item()
-        if isinstance(result_pd, pd.Series):
-            if len(result_pd) == 1:
-                return result_pd.item()
-            return pl.from_pandas(result_pd.reset_index(drop=True))
-        if isinstance(result_pd, pd.DataFrame) and result_pd.shape[1] == 1:
-            s = pl.from_pandas(result_pd.iloc[:, 0].reset_index(drop=True))
-            if len(s) == 1:
-                return s.item()
-            return s
-        return DataFrame(pl.from_pandas(result_pd.reset_index(drop=True)))
+        import polars as pl
+
+        # Use Polars-native indexing for performance
+        # Row selection
+        df_rows = self.df._df[pl_rows]
+
+        # Column selection
+        df_result = df_rows.select(pl_cols)
+
+        height, width = df_result.height, df_result.width
+
+        # Single scalar
+        if height == 1 and width == 1:
+            return df_result.to_series(0)[0]
+
+        # Single column -> return Polars Series
+        if width == 1:
+            series = df_result.to_series(0)
+            if series.len() == 1:
+                return series.to_list()[0]
+            return series
+
+        # General case: wrap in DataFrame
+        return DataFrame(df_result)

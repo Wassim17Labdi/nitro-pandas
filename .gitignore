@@ -137,6 +137,9 @@ Thumbs.db
 *.pyc
 .pytest_cache/
 
+# Debug/temporary files
+debug-pandas/
+
 # PyPI credentials
 .pypirc
 
