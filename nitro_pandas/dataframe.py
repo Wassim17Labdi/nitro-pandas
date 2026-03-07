@@ -273,25 +273,19 @@ class DataFrame:
         """
         import pandas as pd
 
-        # Convert to pandas for fallback
-        pdf = self._df.to_pandas()
-        if not hasattr(pdf, name):
+        # Check existence on the pandas DataFrame class — no data conversion needed.
+        if not hasattr(pd.DataFrame, name):
             raise AttributeError(f"'DataFrame' object has no attribute '{name}'")
 
-        attr = getattr(pdf, name)
-        if callable(attr):
-            # Wrap callable methods to return pandas objects directly
+        pd_attr = getattr(pd.DataFrame, name)
+        if callable(pd_attr):
+            # Defer to_pandas() until the method is actually called.
             def _pandas_fallback(*args, **kwargs):
-                result = attr(*args, **kwargs)
-                if isinstance(result, (pd.DataFrame, pd.Series)):
-                    return result
-                return result
+                return getattr(self._df.to_pandas(), name)(*args, **kwargs)
             return _pandas_fallback
 
-        # Return non-callable attributes directly
-        if isinstance(attr, (pd.DataFrame, pd.Series)):
-            return attr
-        return attr
+        # Non-callable attribute (e.g. a property): convert now.
+        return getattr(self._df.to_pandas(), name)
 
     def __repr__(self):
         """
