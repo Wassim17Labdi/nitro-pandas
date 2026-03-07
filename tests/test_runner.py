@@ -29,6 +29,7 @@ from test_io import (
 from test_dataframe import (
     test_dataframe_creation,
     test_query_method,
+    test_query_injection_blocked,
     test_loc_iloc,
     test_loc_mask,
     test_loc_mask_dataframe,
@@ -77,6 +78,7 @@ if __name__ == "__main__":
     # Tests DataFrame
     test_dataframe_creation()
     test_query_method()
+    test_query_injection_blocked()
     test_loc_iloc()
     test_loc_mask()
     test_loc_mask_dataframe()

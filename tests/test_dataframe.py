@@ -87,6 +87,32 @@ def test_query_method():
         os.unlink(csv_path)
 
 
+def test_query_injection_blocked():
+    """Injection attacks via query() must be blocked and raise ValueError."""
+    df = npd.DataFrame({'a': [1, 2, 3], 'b': ['x', 'y', 'z']})
+
+    injections = [
+        '__import__("os").system("echo PWNED")',   # module import
+        'open("/etc/passwd").read()',               # file access
+        'print("hello")',                           # function call
+        'a > 1 and __import__("os")',               # mixed injection
+        'eval("1+1")',                              # nested eval
+    ]
+
+    for payload in injections:
+        try:
+            df.query(payload)
+            assert False, f"Injection should have been blocked: {payload}"
+        except ValueError:
+            pass  # expected
+
+    # Legitimate queries must still work
+    result = df.query("a > 1")
+    assert result.shape == (2, 2), "Normal query must still work after injection checks"
+
+    print("OK Test query injection blocked OK")
+
+
 def test_loc_iloc():
     """
     Test loc and iloc indexers for label-based and position-based indexing.

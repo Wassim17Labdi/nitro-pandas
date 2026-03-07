@@ -331,45 +331,68 @@ class DataFrame:
     def query(self, expr: str):
         """
         Filter DataFrame using a query expression (pandas-like).
-        
-        Converts pandas-style query strings to Polars expressions.
-        Supports 'and'/'or' operators and column references.
-        
+
+        Parses the expression safely via the AST — no eval() on user input.
+        Only column comparisons and and/or combinations are allowed.
+        Any attempt to call functions or import modules raises ValueError.
+
         Args:
             expr: Query string (e.g., "col1 > 2 and col2 == 'A'")
-            
+
         Returns:
             DataFrame: Filtered DataFrame
-            
+
         Example:
             >>> df.query("id > 2 and name == 'Bob'")
         """
-        # Replace column names with pl.col() expressions
-        def repl(match):
-            col = match.group(0)
-            return f'pl.col("{col}")'
-        
-        # Build regex pattern to match column names
-        pattern = r'\b(' + '|'.join(map(re.escape, self.columns)) + r')\b'
-        expr_polars = re.sub(pattern, repl, expr)
-        
-        # Convert pandas-style operators to Polars syntax
-        expr_polars = re.sub(r'\s+and\s+', ' & ', expr_polars)
-        expr_polars = re.sub(r'\s+or\s+', ' | ', expr_polars) 
-        expr_polars = re.sub(r'\band\b', '&', expr_polars)
-        expr_polars = re.sub(r'\bor\b', '|', expr_polars)
-        
-        # Add parentheses around comparison expressions for proper evaluation
-        expr_polars = re.sub(
-            r'(pl\.col\([^)]+\)\s*[<>=!]=?\s*[^&|()]+)',
-            lambda m: '(' + m.group(1).strip() + ')',
-            expr_polars
-        )
-        
-        # Evaluate expression and filter
-        import polars as pl
-        mask_expr = eval(expr_polars, {"pl": pl})
-        return DataFrame(self._df.filter(mask_expr))
+        import ast as _ast
+
+        columns = set(self._df.columns)
+
+        def _build(node):
+            # Boolean combinations: expr and expr / expr or expr
+            if isinstance(node, _ast.BoolOp):
+                parts = [_build(v) for v in node.values]
+                result = parts[0]
+                for part in parts[1:]:
+                    result = result & part if isinstance(node.op, _ast.And) else result | part
+                return result
+
+            # Comparisons: col > value, col == 'x', ...
+            if isinstance(node, _ast.Compare):
+                if len(node.ops) != 1 or len(node.comparators) != 1:
+                    raise ValueError("Only simple comparisons are supported (one operator per expression).")
+                if not isinstance(node.left, _ast.Name):
+                    raise ValueError(f"Left side of comparison must be a column name.")
+                col_name = node.left.id
+                if col_name not in columns:
+                    raise ValueError(f"Column '{col_name}' not found in DataFrame.")
+                comparator = node.comparators[0]
+                if not isinstance(comparator, _ast.Constant):
+                    raise ValueError("Right side of comparison must be a literal value (number or string).")
+                value = comparator.value
+                col_expr = pl.col(col_name)
+                op = node.ops[0]
+                if isinstance(op, _ast.Gt):    return col_expr > value
+                if isinstance(op, _ast.Lt):    return col_expr < value
+                if isinstance(op, _ast.GtE):   return col_expr >= value
+                if isinstance(op, _ast.LtE):   return col_expr <= value
+                if isinstance(op, _ast.Eq):    return col_expr == value
+                if isinstance(op, _ast.NotEq): return col_expr != value
+                raise ValueError(f"Unsupported comparison operator: {type(op).__name__}")
+
+            raise ValueError(
+                f"Unsupported expression type '{type(node).__name__}'. "
+                f"Only column comparisons with and/or are allowed."
+            )
+
+        try:
+            tree = _ast.parse(expr, mode='eval')
+        except SyntaxError as e:
+            raise ValueError(f"Invalid query expression: {e}") from e
+
+        polars_expr = _build(tree.body)
+        return DataFrame(self._df.filter(polars_expr))
 
     def __gt__(self, other):
         """
