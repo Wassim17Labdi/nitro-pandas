@@ -16,6 +16,15 @@ import polars as pl
 import pandas as pd
 import re
 import numpy as np
+import warnings
+
+class PandasFallbackWarning(UserWarning):
+    """Warning emitted when nitro-pandas falls back to pandas.
+
+    Silence with:
+        import warnings, nitro_pandas as npd
+        warnings.filterwarnings("ignore", category=npd.PandasFallbackWarning)
+    """
 
 
 class GroupBy:
@@ -281,10 +290,20 @@ class DataFrame:
         if callable(pd_attr):
             # Defer to_pandas() until the method is actually called.
             def _pandas_fallback(*args, **kwargs):
+                warnings.warn(
+                    f"[nitro-pandas] '{name}' is not natively implemented — pandas fallback activated.",
+                    PandasFallbackWarning,
+                    stacklevel=2,
+                )
                 return getattr(self._df.to_pandas(), name)(*args, **kwargs)
             return _pandas_fallback
 
-        # Non-callable attribute (e.g. a property): convert now.
+        # Non-callable attribute: convert now.
+        warnings.warn(
+            f"[nitro-pandas] '{name}' is not natively implemented — pandas fallback activated.",
+            PandasFallbackWarning,
+            stacklevel=2,
+        )
         return getattr(self._df.to_pandas(), name)
 
     def __repr__(self):

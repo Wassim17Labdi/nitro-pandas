@@ -633,3 +633,27 @@ def test_setitem_add_column():
     assert pdf7['sum'].tolist() == [11, 22, 33], "df['col'] = multi-column expression must calculate correctly"
     
     print("OK Test df['col'] = value (setitem) OK")
+
+
+def test_pandas_fallback_warning():
+    """PandasFallbackWarning is emitted on fallback and can be silenced."""
+    df = npd.DataFrame({'a': [1, 2, 3], 'b': [4.0, 5.0, 6.0]})
+
+    # Warning fires when an unimplemented method is called
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        df.median()
+
+    assert any(issubclass(w.category, npd.PandasFallbackWarning) for w in caught), \
+        "PandasFallbackWarning should be emitted on pandas fallback"
+
+    # Warning is silenced via filterwarnings
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        warnings.filterwarnings("ignore", category=npd.PandasFallbackWarning)
+        df.median()
+
+    assert not any(issubclass(w.category, npd.PandasFallbackWarning) for w in caught), \
+        "PandasFallbackWarning should be silenced by filterwarnings"
+
+    print("OK Test PandasFallbackWarning OK")

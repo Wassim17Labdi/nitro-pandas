@@ -44,6 +44,7 @@ from test_dataframe import (
     test_merge_and_concat_and_isna_notna,
     test_concat_content,
     test_setitem_add_column,
+    test_pandas_fallback_warning,
 )
 
 from test_groupby import (
@@ -91,7 +92,8 @@ if __name__ == "__main__":
     test_merge_and_concat_and_isna_notna()
     test_concat_content()
     test_setitem_add_column()
-    
+    test_pandas_fallback_warning()
+
     # Tests groupby
     test_groupby()
     test_groupby_lazy()

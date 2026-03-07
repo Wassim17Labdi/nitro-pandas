@@ -24,7 +24,7 @@ Example:
 """
 
 from .io import *
-from .dataframe import DataFrame
+from .dataframe import DataFrame, PandasFallbackWarning
 from .lazyframe import LazyFrame
 
 # Export useful Polars expressions for user convenience
@@ -62,6 +62,7 @@ def concat(dfs: list[DataFrame], axis: int = 0) -> DataFrame:
 __all__ = [
     'DataFrame',
     'LazyFrame',
+    'PandasFallbackWarning',
     'read_csv',
     'read_csv_lazy',
     'read_parquet',
