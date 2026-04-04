@@ -926,6 +926,67 @@ class DataFrame:
             out = out.sort("count", descending=not ascending)
         return DataFrame(out)
 
+    def nlargest(self, n: int, columns, keep: str = "first") -> "DataFrame":
+        """Return the n rows with the largest values in the given column(s)."""
+        cols = columns if isinstance(columns, list) else [columns]
+        out = self._df.sort(cols, descending=True, nulls_last=True).head(n)
+        return DataFrame(out)
+
+    def nsmallest(self, n: int, columns, keep: str = "first") -> "DataFrame":
+        """Return the n rows with the smallest values in the given column(s)."""
+        cols = columns if isinstance(columns, list) else [columns]
+        out = self._df.sort(cols, descending=False, nulls_last=True).head(n)
+        return DataFrame(out)
+
+    def sample(self, n: int | None = None, frac: float | None = None,
+               replace: bool = False, random_state: int | None = None) -> "DataFrame":
+        """Return a random sample of rows."""
+        seed = random_state
+        if frac is not None:
+            out = self._df.sample(fraction=frac, with_replacement=replace, seed=seed)
+        else:
+            out = self._df.sample(n=n or 1, with_replacement=replace, seed=seed)
+        return DataFrame(out)
+
+    def pivot_table(self, values=None, index=None, columns=None,
+                    aggfunc="mean", fill_value=None) -> "DataFrame":
+        """
+        Summarise data like pandas pivot_table.
+
+        Supports string aggfunc: 'mean', 'sum', 'min', 'max', 'count'.
+        When columns= is not given, returns a two-column DataFrame (index + value).
+        When columns= is given, pivots into wide format.
+        """
+        aggfunc_map = {
+            "mean":  pl.col(values).mean(),
+            "sum":   pl.col(values).sum(),
+            "min":   pl.col(values).min(),
+            "max":   pl.col(values).max(),
+            "count": pl.col(values).count(),
+        }
+        if isinstance(aggfunc, str):
+            if aggfunc not in aggfunc_map:
+                raise ValueError(f"aggfunc '{aggfunc}' not supported natively. Use: {list(aggfunc_map)}")
+            agg_expr = aggfunc_map[aggfunc].alias(values)
+        else:
+            raise ValueError("aggfunc must be a string ('mean', 'sum', 'min', 'max', 'count')")
+
+        group_cols = [index] if isinstance(index, str) else list(index)
+
+        if columns is not None:
+            # Wide format: group by index+columns, then pivot
+            pivot_col = columns if isinstance(columns, str) else columns[0]
+            grouped = self._df.group_by(group_cols + [pivot_col]).agg(agg_expr)
+            out = grouped.pivot(on=pivot_col, index=group_cols, values=values)
+            out = out.sort(group_cols)
+        else:
+            out = self._df.group_by(group_cols).agg(agg_expr).sort(group_cols)
+
+        if fill_value is not None:
+            out = out.fill_null(fill_value)
+
+        return DataFrame(out)
+
     def reset_index(self, drop: bool = True, name: str = "index"):
         """
         Reset index (add row numbers as column).

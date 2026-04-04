@@ -46,6 +46,9 @@ from test_dataframe import (
     test_concat_content,
     test_setitem_add_column,
     test_pandas_fallback_warning,
+    test_nlargest_nsmallest,
+    test_sample,
+    test_pivot_table,
 )
 
 from test_groupby import (
@@ -95,6 +98,9 @@ if __name__ == "__main__":
     test_concat_content()
     test_setitem_add_column()
     test_pandas_fallback_warning()
+    test_nlargest_nsmallest()
+    test_sample()
+    test_pivot_table()
 
     # Tests groupby
     test_groupby()

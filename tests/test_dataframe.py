@@ -683,3 +683,69 @@ def test_pandas_fallback_warning():
         "PandasFallbackWarning should be silenced by filterwarnings"
 
     print("OK Test PandasFallbackWarning OK")
+
+
+def test_nlargest_nsmallest():
+    """nlargest and nsmallest return the correct rows without pandas fallback."""
+    df = npd.DataFrame({'score': [3, 1, 4, 1, 5, 9, 2, 6], 'name': list('abcdefgh')})
+
+    top3 = df.nlargest(3, 'score')
+    assert isinstance(top3, npd.DataFrame)
+    assert top3.shape == (3, 2)
+    assert top3.to_pandas()['score'].tolist() == [9, 6, 5]
+
+    bot3 = df.nsmallest(3, 'score')
+    assert isinstance(bot3, npd.DataFrame)
+    assert bot3.to_pandas()['score'].tolist() == [1, 1, 2]
+
+    print("OK Test nlargest/nsmallest OK")
+
+
+def test_sample():
+    """sample returns the right shape and respects random_state reproducibility."""
+    df = npd.DataFrame({'x': list(range(100))})
+
+    s = df.sample(n=10, random_state=42)
+    assert isinstance(s, npd.DataFrame)
+    assert s.shape == (10, 1)
+
+    # Same seed → same result
+    s2 = df.sample(n=10, random_state=42)
+    assert s.to_pandas()['x'].tolist() == s2.to_pandas()['x'].tolist(), \
+        "Same random_state must produce the same sample"
+
+    # frac variant
+    sf = df.sample(frac=0.2, random_state=0)
+    assert sf.shape == (20, 1)
+
+    print("OK Test sample OK")
+
+
+def test_pivot_table():
+    """pivot_table aggregates correctly for common aggfuncs."""
+    df = npd.DataFrame({
+        'cat':   ['A', 'A', 'B', 'B', 'B'],
+        'score': ['x', 'y', 'x', 'x', 'y'],
+        'val':   [10.0, 20.0, 30.0, 40.0, 50.0],
+    })
+
+    # mean aggregation, no columns pivot
+    result = df.pivot_table(values='val', index='cat', aggfunc='mean')
+    assert isinstance(result, npd.DataFrame)
+    pdf = result.to_pandas().set_index('cat')
+    assert abs(pdf.loc['A', 'val'] - 15.0) < 1e-6
+    assert abs(pdf.loc['B', 'val'] - 40.0) < 1e-6
+
+    # sum aggregation
+    result_sum = df.pivot_table(values='val', index='cat', aggfunc='sum')
+    pdf_sum = result_sum.to_pandas().set_index('cat')
+    assert abs(pdf_sum.loc['A', 'val'] - 30.0) < 1e-6
+    assert abs(pdf_sum.loc['B', 'val'] - 120.0) < 1e-6
+
+    # count aggregation
+    result_count = df.pivot_table(values='val', index='cat', aggfunc='count')
+    pdf_count = result_count.to_pandas().set_index('cat')
+    assert pdf_count.loc['A', 'val'] == 2
+    assert pdf_count.loc['B', 'val'] == 3
+
+    print("OK Test pivot_table OK")
