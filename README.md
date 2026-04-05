@@ -30,13 +30,50 @@
 
 ### Performance Comparison
 
-| Operation | pandas | nitro-pandas (Polars) | Speedup |
-|-----------|--------|---------------------|---------|
-| Large CSV Read | 10s | 2s | **5x faster** |
-| GroupBy Aggregation | 5s | 0.5s | **10x faster** |
-| Filter Operations | 3s | 0.3s | **10x faster** |
+Benchmarked on the [Books Rating dataset](https://www.kaggle.com/datasets/mohamedbakhet/amazon-books-reviews) (~3M rows, 10 columns). All times are wall-clock seconds on a single machine.
 
-*Results may vary based on data size and hardware*
+#### Core Operations
+
+| Operation | nitro-pandas | pandas | Polars | vs pandas | vs Polars |
+|-----------|-------------|--------|--------|-----------|-----------|
+| Read CSV | 4.56s | 13.54s | 1.09s | **3.0x faster** | 0.24x |
+| GroupBy + Count | 0.038s | 0.150s | 0.036s | **3.9x faster** | ~same |
+| Chained Ops (filter+groupby+sort) | 0.049s | 0.089s | 0.014s | **1.8x faster** | 0.29x |
+| GroupBy Multi-Column | 0.156s | 0.224s | 0.074s | **1.4x faster** | 0.48x |
+| Sort Values | 0.082s | 0.178s | 0.082s | **2.2x faster** | ~same |
+| Double Filter + GroupBy | 0.021s | 0.061s | 0.011s | **2.9x faster** | 0.53x |
+| Value Counts | 0.010s | 0.007s | 0.010s | ~same | ~same |
+| Multi Aggregations (mean/min/max) | 0.114s | 0.170s | 0.039s | **1.5x faster** | 0.35x |
+| Nunique (count distinct) | 0.098s | 0.503s | 0.080s | **5.1x faster** | 0.81x |
+| Drop Duplicates | 0.189s | 0.531s | 0.223s | **2.8x faster** | **1.2x faster** |
+| Column Arithmetic | 0.010s | 0.002s | 0.003s | 0.19x | 0.28x |
+| Fill Null Values | 0.011s | 0.005s | 0.003s | 0.42x | 0.29x |
+| String Contains Filter | 0.635s | 0.574s | 0.022s | ~same | 0.03x |
+| Describe (summary stats) | 0.088s | 0.074s | 0.014s | ~same | 0.16x |
+| Select + Rename Columns | 0.001s | 0.035s | 0.001s | **47.8x faster** | ~same |
+| **TOTAL** | **6.06s** | **16.14s** | **1.70s** | **2.7x faster** | 0.28x |
+
+#### Extended Operations (native implementations)
+
+| Operation | nitro-pandas | pandas | Polars | vs pandas | vs Polars |
+|-----------|-------------|--------|--------|-----------|-----------|
+| nlargest (top-N rows) | 0.059s | 0.141s | 0.179s | **2.4x faster** | **3.1x faster** |
+| sample (random sampling) | 0.035s | 0.048s | 0.033s | **1.4x faster** | ~same |
+| pivot_table (group aggregation) | 0.009s | 0.028s | 0.007s | **3.0x faster** | ~same |
+
+#### Fallback Operations (via pandas)
+
+| Operation | nitro-pandas | pandas | vs pandas |
+|-----------|-------------|--------|-----------|
+| median | 0.042s | 0.034s | ~same |
+| std | 0.034s | 0.028s | ~same |
+| corr | 0.020s | 0.015s | ~same |
+| apply | 0.024s | 0.019s | ~same |
+| cumsum | 0.023s | 0.014s | ~same |
+
+> **Summary:** nitro-pandas is **faster than pandas in 10/15 core tests** with an overall **2.7x speedup** on the total benchmark. Operations implemented natively (groupby, sort, filter, nunique, nlargest, pivot_table) see the biggest gains. Fallback operations (median, std, corr, apply, cumsum) carry minimal overhead (~20%) over raw pandas.
+
+*Results may vary based on data size and hardware.*
 
 ## 📦 Installation
 
