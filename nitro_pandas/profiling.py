@@ -12,7 +12,6 @@ Usage:
     result = npd.profile_compare(workload)
     print(result)
 
-Requires: pip install 'nitro-pandas[profile]'
 """
 
 import inspect
@@ -77,13 +76,7 @@ class ProfileComparison:
 
 def _run_profiled(workload, module, n_runs, extra_functions):
     """Wrap workload in LineProfiler, run n_runs times, return (result, stats)."""
-    try:
-        from line_profiler import LineProfiler
-    except ImportError:
-        raise ImportError(
-            "line_profiler is required for profile_compare. "
-            "Install it with: pip install 'nitro-pandas[profile]'"
-        )
+    from line_profiler import LineProfiler
 
     lp = LineProfiler()
     if extra_functions:
@@ -189,9 +182,6 @@ def profile_compare(
 
     Returns:
         ProfileComparison | list[dict] | npd.DataFrame
-
-    Requires:
-        pip install 'nitro-pandas[profile]'
     """
     import pandas as _pd
     import nitro_pandas as _npd
