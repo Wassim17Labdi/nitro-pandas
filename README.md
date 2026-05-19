@@ -17,61 +17,39 @@
 
 ## ✨ Features
 
-- 🐼 **Pandas-like API** - Use familiar pandas syntax without learning a new library
-- ⚡ **Polars Backend** - Leverage Polars' optimized engine for maximum performance
-- 🔄 **Lazy Evaluation** - Optimize queries with lazy operations before execution
-- 📊 **Comprehensive I/O** - Read/write CSV, Parquet, JSON, and Excel files
-- 🎯 **Automatic Fallback** - Seamless fallback to pandas for unimplemented methods
-- 🔧 **Type Safety** - Support for pandas-like type casting and schema inference
+- 🐼 **Pandas-like API** — Use familiar pandas syntax without learning a new library
+- ⚡ **Polars Backend** — Leverage Polars' optimized Rust engine for maximum performance
+- 📊 **Comprehensive I/O** — Read/write CSV, Parquet, JSON, and Excel files
+- 🎯 **Automatic Fallback** — Seamless fallback to pandas for unimplemented methods
+- 🔬 **Built-in Profiler** — Line-by-line comparison of your pandas code vs nitro-pandas with `profile_compare`
+- 🔧 **Type Safety** — Support for pandas-like type casting and schema inference
 
 ## 🎯 Why nitro-pandas?
 
-**nitro-pandas** bridges the gap between pandas' user-friendly API and Polars' exceptional performance. If you're familiar with pandas but need better performance, nitro-pandas is the perfect solution.
+**nitro-pandas** bridges the gap between pandas' user-friendly API and Polars' exceptional performance. Replace `import pandas as pd` with `import nitro_pandas as npd` and get faster code without changing anything else.
 
 ### Performance Comparison
 
-Benchmarked on the [Books Rating dataset](https://www.kaggle.com/datasets/mohamedbakhet/amazon-books-reviews) (~3M rows, 10 columns). All times are wall-clock seconds on a single machine.
+Benchmarked on the [Books Rating dataset](https://www.kaggle.com/datasets/mohamedbakhet/amazon-books-reviews) (~3M rows, 10 columns) using `npd.profile_compare`. All times are averaged wall-clock seconds.
 
-#### Core Operations
+| Operation | pandas | nitro-pandas | Speedup |
+|-----------|--------|-------------|---------|
+| Read CSV | 13.04s | 1.09s | **12.0x** ↑ |
+| Rename columns | 0.11s | 0.001s | **80x** ↑ |
+| Drop duplicates | 0.52s | 0.42s | **1.2x** ↑ |
+| Filter (`df[df["Price"] > 0]`) | 0.028s | 0.009s | **3.1x** ↑ |
+| Chained filters | 0.008–0.014s | 0.001–0.002s | **5–8x** ↑ |
+| GroupBy + mean | 0.030s | 0.004s | **7.5x** ↑ |
+| GroupBy + count | 0.032s | 0.004s | **8.9x** ↑ |
+| nlargest (top-N) | 0.027–0.029s | 0.007–0.009s | **3–4x** ↑ |
+| String filter (`str.contains`) | 0.15–0.20s | 0.02–0.03s | **5–9x** ↑ |
+| pivot_table | 0.008s | 0.003s | **2.8x** ↑ |
+| sample (50k rows) | 0.010s | 0.001s | **8.0x** ↑ |
+| describe | 0.012s | 0.003s | **4.2x** ↑ |
+| sort_values | 0.041s | 0.018s | **2.3x** ↑ |
+| **TOTAL pipeline** | **14.47s** | **1.68s** | **8.6x** ↑ |
 
-| Operation | nitro-pandas | pandas | Polars | vs pandas | vs Polars |
-|-----------|-------------|--------|--------|-----------|-----------|
-| Read CSV | 4.56s | 13.54s | 1.09s | **3.0x faster** | 0.24x |
-| GroupBy + Count | 0.038s | 0.150s | 0.036s | **3.9x faster** | ~same |
-| Chained Ops (filter+groupby+sort) | 0.049s | 0.089s | 0.014s | **1.8x faster** | 0.29x |
-| GroupBy Multi-Column | 0.156s | 0.224s | 0.074s | **1.4x faster** | 0.48x |
-| Sort Values | 0.082s | 0.178s | 0.082s | **2.2x faster** | ~same |
-| Double Filter + GroupBy | 0.021s | 0.061s | 0.011s | **2.9x faster** | 0.53x |
-| Value Counts | 0.010s | 0.007s | 0.010s | ~same | ~same |
-| Multi Aggregations (mean/min/max) | 0.114s | 0.170s | 0.039s | **1.5x faster** | 0.35x |
-| Nunique (count distinct) | 0.098s | 0.503s | 0.080s | **5.1x faster** | 0.81x |
-| Drop Duplicates | 0.189s | 0.531s | 0.223s | **2.8x faster** | **1.2x faster** |
-| Column Arithmetic | 0.010s | 0.002s | 0.003s | 0.19x | 0.28x |
-| Fill Null Values | 0.011s | 0.005s | 0.003s | 0.42x | 0.29x |
-| String Contains Filter | 0.635s | 0.574s | 0.022s | ~same | 0.03x |
-| Describe (summary stats) | 0.088s | 0.074s | 0.014s | ~same | 0.16x |
-| Select + Rename Columns | 0.001s | 0.035s | 0.001s | **47.8x faster** | ~same |
-| **TOTAL** | **6.06s** | **16.14s** | **1.70s** | **2.7x faster** | 0.28x |
-
-#### Extended Operations (native implementations)
-
-| Operation | nitro-pandas | pandas | Polars | vs pandas | vs Polars |
-|-----------|-------------|--------|--------|-----------|-----------|
-| nlargest (top-N rows) | 0.059s | 0.141s | 0.179s | **2.4x faster** | **3.1x faster** |
-| sample (random sampling) | 0.035s | 0.048s | 0.033s | **1.4x faster** | ~same |
-| pivot_table (group aggregation) | 0.009s | 0.028s | 0.007s | **3.0x faster** | ~same |
-
-#### Fallback Operations (via pandas)
-
-| Operation | nitro-pandas | pandas | vs pandas |
-|-----------|-------------|--------|-----------|
-| median | 0.042s | 0.034s | ~same |
-| std | 0.034s | 0.028s | ~same |
-| corr | 0.020s | 0.015s | ~same |
-| apply | 0.024s | 0.019s | ~same |
-| cumsum | 0.023s | 0.014s | ~same |
-
-> **Summary:** nitro-pandas is **faster than pandas in 10/15 core tests** with an overall **2.7x speedup** on the total benchmark. Operations implemented natively (groupby, sort, filter, nunique, nlargest, pivot_table) see the biggest gains. Fallback operations (median, std, corr, apply, cumsum) carry minimal overhead (~20%) over raw pandas.
+> **Summary:** **8.6x overall speedup** on a realistic 13-step production pipeline. The biggest gains are on I/O, string operations, groupby, and sampling — the operations that dominate real-world workloads.
 
 *Results may vary based on data size and hardware.*
 
@@ -89,11 +67,12 @@ pip install nitro-pandas
 
 - **Python 3.11+**
 - **Dependencies** (automatically installed):
-  - `polars>=1.30.0` - High-performance DataFrame engine
-  - `pandas>=2.2.3` - For fallback methods
-  - `fastexcel>=0.7.0` - Fast Excel reading
-  - `openpyxl>=3.1.5` - Excel file support
-  - `pyarrow>=20.0.0` - Parquet file support
+  - `polars>=1.30.0` — High-performance DataFrame engine
+  - `pandas>=2.2.3` — For fallback methods
+  - `line-profiler>=5.0.2` — For `profile_compare`
+  - `fastexcel>=0.7.0` — Fast Excel reading
+  - `openpyxl>=3.1.5` — Excel file support
+  - `pyarrow>=20.0.0` — Parquet file support
 
 ## 🚀 Quick Start
 
@@ -109,13 +88,11 @@ df = npd.DataFrame({
     'city': ['Paris', 'London', 'New York']
 })
 
-# Access columns (returns pandas Series for compatibility)
-ages = df['age']
-print(ages > 30)  # Boolean Series
-
 # Filter data
-filtered = df.loc[df['age'] > 30]
-print(filtered)
+filtered = df[df['age'] > 30]
+
+# GroupBy
+result = df.groupby('city')['age'].mean()
 ```
 
 ### Reading Files
@@ -128,42 +105,89 @@ df = npd.read_csv('data.csv')
 lf = npd.read_csv_lazy('large_data.csv')
 df = lf.query('id > 1000').collect()
 
-# Read other formats
+# Other formats
 df_parquet = npd.read_parquet('data.parquet')
-df_excel = npd.read_excel('data.xlsx')
-df_json = npd.read_json('data.json')
+df_excel   = npd.read_excel('data.xlsx')
+df_json    = npd.read_json('data.json')
 ```
 
 ### Data Operations
 
 ```python
-# GroupBy operations (pandas-like syntax, Polars backend)
+# GroupBy operations
 result = df.groupby('city')['age'].mean()
-print(result)
-
-# Multi-column groupby
 result = df.groupby(['city', 'category'])['value'].sum()
+result = df.groupby('category').agg({'value': 'mean', 'count': 'sum'})
 
-# Aggregations with dictionaries
-result = df.groupby('category').agg({
-    'value': 'mean',
-    'count': 'sum'
-})
-
-# Sorting and filtering
-df_sorted = df.sort_values('age', ascending=False)
+# Sorting, filtering, sampling
+df_sorted   = df.sort_values('age', ascending=False)
 df_filtered = df.query("age > 25 and city == 'Paris'")
+df_sample   = df.sample(n=1000, random_state=42)
+
+# Top-N rows
+top10 = df.nlargest(10, 'age')
+
+# Pivot table
+pivot = df.pivot_table(values='age', index='city', aggfunc='mean')
+
+# Summary statistics
+df.describe()
+df.std()
+df.median()
+df.corr()
 ```
 
 ### Writing Files
 
 ```python
-# Write to various formats
 df.to_csv('output.csv')
 df.to_parquet('output.parquet')
 df.to_json('output.json')
 df.to_excel('output.xlsx')
 ```
+
+## 🔬 profile_compare
+
+`profile_compare` runs your pandas code line-by-line under both backends and reports the speedup per line — so you know exactly where nitro-pandas helps.
+
+```python
+import nitro_pandas as npd
+
+def my_pipeline(pd):
+    df = pd.read_csv("data.csv")
+    df = df.rename(columns={"review/score": "score"})
+    result = df.groupby("Id")["score"].mean()
+    return result
+
+print(npd.profile_compare(my_pipeline))
+```
+
+Output:
+```
+------------------------------------------------------------------------------------------
+ Line  Source                                               pandas      nitro     Gain  
+------------------------------------------------------------------------------------------
+    5  df = pd.read_csv("data.csv")                       13.0385s    1.0866s   12.00x  ↑ 
+    6  df = df.rename(columns={"review/score": "sco       0.1051s    0.0013s   80.14x  ↑ 
+    7  result = df.groupby("Id")["score"].mean()           0.0296s    0.0039s    7.51x  ↑ 
+------------------------------------------------------------------------------------------
+TOTAL                                                      13.1732s    1.0918s   12.07x
+------------------------------------------------------------------------------------------
+```
+
+**Options:**
+
+```python
+npd.profile_compare(
+    my_pipeline,
+    n_runs=3,           # average over 3 runs
+    warmup=1,           # 1 warm-up run discarded
+    assert_equal=True,  # raise if results differ between backends
+    return_format="dataframe",  # "table" (default) | "dict" | "dataframe"
+)
+```
+
+Lines marked `⚠` triggered a pandas fallback — those are candidates for native implementation.
 
 ## 📚 API Reference
 
@@ -171,193 +195,115 @@ df.to_excel('output.xlsx')
 
 #### Creation
 ```python
-# From dictionary
 df = npd.DataFrame({'a': [1, 2, 3], 'b': [4, 5, 6]})
-
-# From Polars DataFrame
 df = npd.DataFrame(pl.DataFrame({'a': [1, 2, 3]}))
-
-# Empty DataFrame
-df = npd.DataFrame()
 ```
 
 #### Indexing
 ```python
-# Column selection
-df['column_name']  # Returns pandas Series
-df[['col1', 'col2']]  # Returns DataFrame
-
-# Boolean filtering
-df[df['age'] > 30]  # Returns DataFrame
-
-# Label-based indexing
-df.loc[df['age'] > 30, 'name']  # Returns Series
-df.loc[0:5, ['name', 'age']]  # Returns DataFrame
-
-# Position-based indexing
-df.iloc[0:5, 0:2]  # Returns DataFrame
+df['column_name']           # Returns nitro-pandas Series
+df[['col1', 'col2']]        # Returns DataFrame
+df[df['age'] > 30]          # Boolean filtering
+df.loc[df['age'] > 30, 'name']
+df.iloc[0:5, 0:2]
 ```
 
 #### Transformations
 ```python
-# Type casting (pandas-like types)
-df = df.astype({'id': 'int64', 'name': 'str'})
+df.astype({'id': 'int64', 'name': 'str'})
+df.rename(columns={'old': 'new'})
+df.drop(labels=['col1'], axis=1)
+df.fillna({'column': 0})
+df.sort_values('age', ascending=False)
+df.drop_duplicates(subset=['id'])
+```
 
-# Rename columns
-df = df.rename(columns={'old_name': 'new_name'})
-
-# Drop rows/columns
-df = df.drop(labels=[0, 1], axis=0)  # Drop rows
-df = df.drop(labels=['col1'], axis=1)  # Drop columns
-
-# Fill null values
-df = df.fillna({'column': 0})
-
-# Sort values
-df = df.sort_values('age', ascending=False)
+#### Aggregations (native, no pandas fallback)
+```python
+df.describe()
+df.std()
+df.median()
+df.corr()
+df.groupby('col')['val'].mean()
+df.groupby('col')['val'].count()
+df.nlargest(100, 'col')
+df.sample(n=1000, random_state=42)
+df.pivot_table(values='val', index='col', aggfunc='mean')
 ```
 
 ### I/O Functions
 
 #### CSV
 ```python
-# Eager reading
-df = npd.read_csv('file.csv', 
-                  sep=',',
-                  usecols=['col1', 'col2'],
-                  dtype={'id': 'int64'})
-
-# Lazy reading
+df = npd.read_csv('file.csv', sep=',', usecols=['col1', 'col2'], dtype={'id': 'int64'})
 lf = npd.read_csv_lazy('file.csv', n_rows=1000)
-df = lf.collect()
 ```
 
 #### Parquet
 ```python
-# Eager reading
-df = npd.read_parquet('file.parquet',
-                      columns=['col1', 'col2'],
-                      n_rows=1000)
-
-# Lazy reading
+df = npd.read_parquet('file.parquet', columns=['col1', 'col2'])
 lf = npd.read_parquet_lazy('file.parquet')
-df = lf.collect()
 ```
 
 #### Excel
 ```python
-# Eager reading
-df = npd.read_excel('file.xlsx',
-                    sheet_name=0,
-                    usecols=['col1', 'col2'],
-                    nrows=1000)
-
-# Lazy reading
+df = npd.read_excel('file.xlsx', sheet_name=0, usecols=['col1'], nrows=1000)
 lf = npd.read_excel_lazy('file.xlsx', sheet_name='Sheet1')
-df = lf.collect()
 ```
 
 #### JSON
 ```python
-# Eager reading
-df = npd.read_json('file.json',
-                   dtype={'id': 'int64'},
-                   n_rows=1000)
-
-# Lazy reading
+df = npd.read_json('file.json', dtype={'id': 'int64'})
 lf = npd.read_json_lazy('file.json', lines=True)
-df = lf.collect()
-```
-
-### LazyFrame Operations
-
-```python
-# Create lazy frame
-lf = npd.read_csv_lazy('large_file.csv')
-
-# Chain operations (optimized before execution)
-result = (lf
-          .query('age > 30')
-          .groupby('city')
-          .agg({'value': 'mean'}))
-
-# Execute query
-df = result.collect()
-# Sort after collection if needed
-df = df.sort_values('value', ascending=False)
 ```
 
 ## 🔄 Migration from pandas
 
-Migrating from pandas to nitro-pandas is straightforward:
-
 ```python
-# Before (pandas)
+# Before
 import pandas as pd
 df = pd.read_csv('data.csv')
 result = df.groupby('category')['value'].mean()
 
-# After (nitro-pandas)
+# After — same code, faster execution
 import nitro_pandas as npd
 df = npd.read_csv('data.csv')
 result = df.groupby('category')['value'].mean()
 ```
 
-Most pandas operations work the same way! The main differences:
+Key differences to be aware of:
 
-- **Single column selection** (`df['col']`) returns a pandas Series (not a nitro-pandas Series) to maintain compatibility with pandas expressions and boolean indexing
-- **Comparison operations** (`df > 2`) return pandas DataFrames for boolean indexing compatibility
-- **Unimplemented methods**: Automatic fallback to pandas is available at **both the DataFrame instance level and the package level**:
-  ```python
-  # ✅ Works: fallback on DataFrame instance
-  df = npd.DataFrame({'a': [1, 2, 3]})
-  result = df.describe()  # Falls back to pandas DataFrame method
-  
-  # ✅ Works: fallback at package level
-  import pandas as pd
-  df_pd = pd.DataFrame({'a': [1, 2, 1], 'b': ['x', 'y', 'x']})
-  result = npd.get_dummies(df_pd)  # Falls back to pandas module function
-  result = npd.date_range('2024-01-01', periods=5)  # Falls back to pandas
-  ```
-  Note: Methods that only exist on DataFrame instances (like `describe()`) are only available via DataFrame instances, not at the package level.
-- **Mixed types in columns**: Unlike pandas, Polars (and thus nitro-pandas) does **not** allow mixed types within a single column. Each column must have a consistent type. If your pandas DataFrame has mixed types in a column, Polars will coerce them to a common type (usually `object`/string) or raise an error.
-  ```python
-  # ❌ This works in pandas but NOT in Polars/nitro-pandas
-  pd.DataFrame({'col': [1, 'text', 3.5]})  # Mixed int, str, float
-  
-  # ✅ Polars will coerce to string or raise error
-  npd.DataFrame({'col': [1, 'text', 3.5]})  # All values become strings
-  ```
-- **No `inplace` parameter**: Polars operations are always immutable (return new DataFrames), so nitro-pandas does **not** support the `inplace=True` parameter found in pandas. All operations return new DataFrame objects.
-  ```python
-  # ❌ This works in pandas but NOT in nitro-pandas
-  df.drop(columns=['col'], inplace=True)  # inplace not supported
-  
-  # ✅ Always assign the result
-  df = df.drop(labels=['col'], axis=1)  # Returns new DataFrame
-  ```
+- **`df['col']`** returns a nitro-pandas `Series` (not a pandas Series) — it's compatible with boolean indexing and most pandas operations
+- **No `inplace` parameter** — all operations return new DataFrames
+- **No mixed column types** — each column must have a consistent type (Polars requirement)
+- **Unimplemented methods** fall back to pandas automatically with a `PandasFallbackWarning`
+
+```python
+import warnings
+from nitro_pandas import PandasFallbackWarning
+
+# Silence fallback warnings if needed
+warnings.filterwarnings("ignore", category=PandasFallbackWarning)
+```
 
 ## 🏗️ Project Structure
 
 ```
 nitro-pandas/
 ├── nitro_pandas/
-│   ├── __init__.py          # Package initialization
-│   ├── dataframe.py         # DataFrame implementation
-│   ├── lazyframe.py         # LazyFrame implementation
-│   └── io/
-│       ├── __init__.py      # IO module exports
-│       ├── csv.py           # CSV I/O
-│       ├── parquet.py       # Parquet I/O
-│       ├── json.py          # JSON I/O
-│       └── excel.py         # Excel I/O
+│   ├── __init__.py      # Public API
+│   ├── dataframe.py     # DataFrame, Series, GroupBy
+│   ├── profiling.py     # profile_compare
+│   ├── lazyframe.py     # LazyFrame
+│   └── io/              # read_csv, read_parquet, read_excel, read_json
 ├── tests/
-│   ├── test_dataframe.py    # DataFrame tests
-│   ├── test_groupby.py      # GroupBy tests
-│   ├── test_io.py           # I/O tests
-│   └── helpers.py           # Test utilities
-├── pyproject.toml           # Project configuration
-└── README.md                 # This file
+│   ├── test_dataframe.py
+│   ├── test_profiling.py
+│   ├── test_groupby.py
+│   ├── test_io.py
+│   └── test_runner.py
+├── pyproject.toml
+└── CHANGELOG.md
 ```
 
 ## 🤝 Contributing
@@ -366,44 +312,27 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+3. Commit your changes
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
 ### Development Setup
 
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/nitro-pandas.git
+git clone https://github.com/Wassim17Labdi/nitro-pandas.git
 cd nitro-pandas
-
-# Install development dependencies
 uv sync --dev
-
-# Run tests
 uv run python tests/test_runner.py
 ```
 
 ## 📝 License
 
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
-
-The MIT License is a permissive open-source license that allows anyone to:
-- ✅ Use the software for any purpose (commercial or personal)
-- ✅ Modify the software
-- ✅ Distribute the software
-- ✅ Sublicense the software
-
-**In short: Everyone can use it freely!**
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
-- [Polars](https://www.pola.rs/) - For the high-performance DataFrame engine
-- [pandas](https://pandas.pydata.org/) - For the API inspiration and fallback support
-
-## 📧 Contact
-
-For questions, suggestions, or support, please open an issue on GitHub.
+- [Polars](https://www.pola.rs/) — For the high-performance DataFrame engine
+- [pandas](https://pandas.pydata.org/) — For the API inspiration and fallback support
 
 ---
 
