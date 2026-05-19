@@ -27,6 +27,112 @@ class PandasFallbackWarning(UserWarning):
     """
 
 
+class _StringAccessor:
+    """Translates pandas str.contains API to Polars regex."""
+
+    def __init__(self, pl_str):
+        self._str = pl_str
+
+    def contains(self, pat, case=True, na=False, regex=True):
+        if not case:
+            pat = f"(?i){pat}"
+        return self._str.contains(pat, literal=not regex)
+
+    def __getattr__(self, name):
+        return getattr(self._str, name)
+
+
+class Series:
+    """Thin Polars-backed wrapper with a pandas-like API.
+
+    Keeps column data in Polars so comparisons, fillna, and str.contains
+    all stay in Polars land — no Python list round-trips.
+    """
+
+    def __init__(self, pl_series: pl.Series):
+        self._series = pl_series
+
+    # ── string accessor ───────────────────────────────────────────────────
+    @property
+    def str(self):
+        return _StringAccessor(self._series.str)
+
+    # ── null handling ─────────────────────────────────────────────────────
+    def fillna(self, value):
+        return Series(self._series.fill_null(value))
+
+    # ── type casting ──────────────────────────────────────────────────────
+    def astype(self, dtype):
+        dtype_map = {
+            "int64": pl.Int64, "int32": pl.Int32,
+            "float64": pl.Float64, "float32": pl.Float32,
+            "str": pl.Utf8, "bool": pl.Boolean,
+            int: pl.Int64, float: pl.Float64, str: pl.Utf8, bool: pl.Boolean,
+        }
+        return Series(self._series.cast(dtype_map.get(dtype, dtype)))
+
+    # ── value counts ──────────────────────────────────────────────────────
+    def value_counts(self, sort=True, ascending=False):
+        result = self._series.value_counts(sort=sort, parallel=True)
+        if sort and not ascending:
+            result = result.sort("count", descending=True)
+        return DataFrame(result)
+
+    # ── comparisons → pl.Series (usable directly as boolean mask) ────────
+    def __gt__(self, other):  return self._series.__gt__(other)
+    def __lt__(self, other):  return self._series.__lt__(other)
+    def __ge__(self, other):  return self._series.__ge__(other)
+    def __le__(self, other):  return self._series.__le__(other)
+    def __eq__(self, other):  return self._series.__eq__(other)
+    def __ne__(self, other):  return self._series.__ne__(other)
+
+    # ── arithmetic → pl.Series ────────────────────────────────────────────
+    def __add__(self, other):       return self._series + other
+    def __radd__(self, other):      return other + self._series
+    def __sub__(self, other):       return self._series - other
+    def __rsub__(self, other):      return other - self._series
+    def __mul__(self, other):       return self._series * other
+    def __rmul__(self, other):      return other * self._series
+    def __truediv__(self, other):   return self._series / other
+    def __floordiv__(self, other):  return self._series // other
+    def __mod__(self, other):       return self._series % other
+
+    # ── boolean combination ───────────────────────────────────────────────
+    def __and__(self, other):
+        return self._series & (other._series if isinstance(other, Series) else other)
+
+    def __or__(self, other):
+        return self._series | (other._series if isinstance(other, Series) else other)
+
+    def __invert__(self):
+        return ~self._series
+
+    # ── sizing / iteration ────────────────────────────────────────────────
+    def __len__(self):   return len(self._series)
+    def __iter__(self):  return iter(self._series)
+    def __repr__(self):  return self._series.__repr__()
+    def __str__(self):   return self._series.__str__()
+
+    # ── conversion ────────────────────────────────────────────────────────
+    def to_pandas(self):  return self._series.to_pandas()
+    def to_list(self):    return self._series.to_list()
+    tolist = to_list
+
+    # ── transparent fallback: pl.Series first, then pd.Series ────────────
+    def __getattr__(self, name):
+        if hasattr(self._series, name):
+            return getattr(self._series, name)
+        pd_series = self._series.to_pandas()
+        if hasattr(pd_series, name):
+            warnings.warn(
+                f"[nitro-pandas] Series.'{name}' is not natively available — pandas fallback activated.",
+                PandasFallbackWarning,
+                stacklevel=2,
+            )
+            return getattr(pd_series, name)
+        raise AttributeError(f"'Series' object has no attribute '{name}'")
+
+
 class GroupBy:
     """
     Wrapper for Polars GroupBy operations with pandas-like API.
@@ -263,6 +369,38 @@ class DataFrame:
         else:
             # Empty DataFrame
             self._df = pl.DataFrame()
+        # Buffer for pending column assignments — flushed as a single with_columns()
+        self._pending_cols = {}
+
+    def _flush_pending(self, read_col: str | None = None) -> None:
+        """Flush buffered column assignments as a single with_columns() call.
+
+        Args:
+            read_col: When set, only flush if that specific column has a pending
+                      write (smart flush for df["col"] access). None = flush all.
+        """
+        if not self._pending_cols:
+            return
+        if read_col is not None and read_col not in self._pending_cols:
+            return  # Reading an unmodified column — safe to skip
+        exprs = []
+        for name, val in self._pending_cols.items():
+            if isinstance(val, Series):
+                exprs.append(val._series.alias(name))
+            elif isinstance(val, pl.Series):
+                exprs.append(val.alias(name))
+            elif isinstance(val, pl.Expr):
+                exprs.append(val.alias(name))
+            elif isinstance(val, pd.Series):
+                exprs.append(pl.from_pandas(val).alias(name))
+            elif isinstance(val, np.ndarray):
+                exprs.append(pl.Series(name, val))
+            elif isinstance(val, (list, tuple)):
+                exprs.append(pl.Series(name, val))
+            else:
+                exprs.append(pl.lit(val).alias(name))
+        self._df = self._df.with_columns(exprs)
+        self._pending_cols = {}
 
     def __getattr__(self, name: str):
         """
@@ -295,10 +433,12 @@ class DataFrame:
                     PandasFallbackWarning,
                     stacklevel=2,
                 )
+                self._flush_pending()
                 return getattr(self._df.to_pandas(), name)(*args, **kwargs)
             return _pandas_fallback
 
         # Non-callable attribute: convert now.
+        self._flush_pending()
         warnings.warn(
             f"[nitro-pandas] '{name}' is not natively implemented — pandas fallback activated.",
             PandasFallbackWarning,
@@ -316,13 +456,13 @@ class DataFrame:
         Returns:
             str: String representation of DataFrame
         """
-        # Use Polars' built-in string representation which is already nice
+        self._flush_pending()
         return self._df.__repr__()
-    
+
     def __str__(self):
         """
         String representation of DataFrame.
-        
+
         Returns:
             str: String representation of DataFrame
         """
@@ -391,6 +531,7 @@ class DataFrame:
         except SyntaxError as e:
             raise ValueError(f"Invalid query expression: {e}") from e
 
+        self._flush_pending()
         polars_expr = _build(tree.body)
         return DataFrame(self._df.filter(polars_expr))
 
@@ -595,23 +736,26 @@ class DataFrame:
                 mask = pl.Series("", mask_values).cast(pl.Boolean)
             return DataFrame(self._df.filter(mask))
         
-        # Handle other boolean masks (Polars Series, numpy array, list)
+        # Handle other boolean masks (our Series, Polars Series, numpy array, list)
+        if isinstance(key, Series):
+            self._flush_pending()
+            return DataFrame(self._df.filter(key._series.cast(pl.Boolean)))
         if (isinstance(key, pl.Series) and key.dtype == pl.Boolean) or \
            (isinstance(key, np.ndarray) and key.dtype == bool) or \
            (isinstance(key, list) and all(isinstance(x, (bool, np.bool_)) for x in key)):
+            self._flush_pending()
             mask = pl.Series("", key).cast(pl.Boolean)
             return DataFrame(self._df.filter(mask))
-        
+
         # Handle column selection: df[['col1', 'col2']]
         if isinstance(key, list) and all(isinstance(x, str) for x in key):
+            self._flush_pending()
             return DataFrame(self._df.select(key))
-        
-        # Handle single column: df['col'] (returns pandas Series for pandas expressions)
+
+        # Handle single column: smart flush (only if this column has a pending write)
         if isinstance(key, str):
-            import pandas as pd
-            pl_series = self._df[key]
-            # Convert to pandas Series to enable pandas-style expressions
-            return pl_series.to_pandas()
+            self._flush_pending(read_col=key)
+            return Series(self._df[key])
         
         # Fallback to Polars indexing (slices, tuples, etc.)
         result = self._df[key]
@@ -644,44 +788,43 @@ class DataFrame:
         if not isinstance(key, str):
             raise TypeError(f"Column assignment requires string key, got {type(key)}")
         
-        # Handle Polars expression
-        if isinstance(value, pl.Expr):
-            self._df = self._df.with_columns(value.alias(key))
-        # Handle pandas Series
-        elif isinstance(value, pd.Series):
-            self._df = self._df.with_columns(pl.Series(key, value.tolist()))
-        # Handle list/array
-        elif isinstance(value, (list, tuple)):
-            self._df = self._df.with_columns(pl.Series(key, value))
-        # Handle scalar value
-        else:
-            self._df = self._df.with_columns(pl.lit(value).alias(key))
+        # Buffer the assignment — will be flushed as a batched with_columns()
+        # the next time the DataFrame is read. This avoids one with_columns()
+        # call per assignment when multiple columns are added in sequence.
+        self._pending_cols[key] = value
 
     @property
     def columns(self):
-        """Return column labels as a list."""
-        return self._df.columns
+        """Return column labels as a list (includes pending columns)."""
+        existing = self._df.columns
+        pending = [k for k in self._pending_cols if k not in existing]
+        return existing + pending
 
     @columns.setter
     def columns(self, new_columns):
         """Set column labels."""
+        self._flush_pending()
         self._df.columns = new_columns
-    
+
     def head(self, n: int = 5) -> "DataFrame":
         """Return the first n rows."""
+        self._flush_pending()
         return DataFrame(self._df.head(n))
-    
+
     def tail(self, n: int = 5) -> "DataFrame":
         """Return the last n rows."""
+        self._flush_pending()
         return DataFrame(self._df.tail(n))
-    
+
     @property
     def shape(self) -> tuple:
         """Return a tuple representing the dimensionality (rows, columns)."""
-        return (self._df.height, self._df.width)
-    
+        n_pending_new = sum(1 for k in self._pending_cols if k not in self._df.columns)
+        return (self._df.height, self._df.width + n_pending_new)
+
     def to_pandas(self):
         """Convert to pandas DataFrame."""
+        self._flush_pending()
         return self._df.to_pandas()
 
     def to_csv(self, path, **kwargs):
@@ -709,23 +852,26 @@ class DataFrame:
     def groupby(self, by):
         """
         Group DataFrame by one or more columns.
-        
+
         Args:
             by: Column name(s) to group by
-            
+
         Returns:
             GroupBy: GroupBy object for aggregation operations
         """
-        return GroupBy(self._df.group_by(by)) 
+        self._flush_pending()
+        return GroupBy(self._df.group_by(by))
 
     @property
     def loc(self):
         """Label-based indexing (pandas-like)."""
+        self._flush_pending()
         return LocIndexer(self)
 
     @property
     def iloc(self):
         """Integer position-based indexing (pandas-like)."""
+        self._flush_pending()
         return ILocIndexer(self)
 
     def sort_values(self, by, ascending: bool = True, na_position: str = "last"):
@@ -742,6 +888,7 @@ class DataFrame:
         """
         import polars as pl
         cols = by if isinstance(by, list) else [by]
+        self._flush_pending()
         nulls_last = True if na_position == "last" else False
         out = self._df.sort(by=cols, descending=not ascending, nulls_last=nulls_last)
         return DataFrame(out)
@@ -904,8 +1051,9 @@ class DataFrame:
         Returns:
             DataFrame: DataFrame with duplicates removed
         """
+        self._flush_pending()
         keep_map = {"first": "first", "last": "last", False: "none", None: "first"}
-        out = self._df.unique(subset=subset, keep=keep_map.get(keep, "first"))
+        out = self._df.unique(subset=subset, keep=keep_map.get(keep, "first"), maintain_order=False)
         return DataFrame(out)
 
     def value_counts(self, column: str, sort: bool = True, ascending: bool = False):
@@ -987,6 +1135,46 @@ class DataFrame:
 
         return DataFrame(out)
 
+    def describe(self, percentiles=(0.25, 0.5, 0.75)):
+        """Summary statistics for numeric columns (native Polars)."""
+        self._flush_pending()
+        return DataFrame(self._df.describe(percentiles=list(percentiles)))
+
+    def median(self):
+        """Median of each numeric column (native Polars)."""
+        self._flush_pending()
+        numeric = [c for c in self._df.columns if self._df[c].dtype.is_numeric()]
+        return DataFrame(self._df.select([pl.col(c).median() for c in numeric]))
+
+    def std(self, ddof: int = 1):
+        """Standard deviation of each numeric column (native Polars)."""
+        self._flush_pending()
+        numeric = [c for c in self._df.columns if self._df[c].dtype.is_numeric()]
+        return DataFrame(self._df.select([pl.col(c).std(ddof=ddof) for c in numeric]))
+
+    def corr(self) -> "DataFrame":
+        """Pairwise Pearson correlation of numeric columns (native Polars).
+
+        Returns a DataFrame with a leading 'feature' column (row labels) followed
+        by one column per numeric input column — similar to pandas corr() but
+        without a named index.
+        """
+        self._flush_pending()
+        numeric = [c for c in self._df.columns if self._df[c].dtype.is_numeric()]
+        rows = []
+        for col_a in numeric:
+            row = [col_a]
+            for col_b in numeric:
+                if col_a == col_b:
+                    row.append(1.0)
+                else:
+                    row.append(self._df.select(pl.corr(col_a, col_b)).item())
+            rows.append(row)
+        data = {"feature": [r[0] for r in rows]}
+        for i, col_b in enumerate(numeric):
+            data[col_b] = [r[i + 1] for r in rows]
+        return DataFrame(pl.DataFrame(data))
+
     def reset_index(self, drop: bool = True, name: str = "index"):
         """
         Reset index (add row numbers as column).
@@ -1020,6 +1208,8 @@ class DataFrame:
         Returns:
             DataFrame: Merged DataFrame
         """
+        self._flush_pending()
+        right._flush_pending()
         how_map = {"inner":"inner", "left":"left", "right":"right", "outer":"outer", "cross":"cross"}
         if on is not None:
             left_on = on

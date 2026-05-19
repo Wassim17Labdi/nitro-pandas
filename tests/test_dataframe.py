@@ -267,10 +267,11 @@ def test_direct_mask():
         assert selected.shape[1] == 2, "df[['col1', 'col2']] must have 2 columns"
         assert 'id' in selected.columns and 'val' in selected.columns, "df[['col1', 'col2']] must have correct columns"
         
-        # Test 3: df['col'] - single column selection (returns pandas Series for pandas expressions)
+        # Test 3: df['col'] - single column selection (returns nitro-pandas Series)
+        from nitro_pandas.dataframe import Series as NpdSeries
         single_col = df['val']
-        import pandas as pd
-        assert isinstance(single_col, pd.Series), "df['col'] must return a pandas Series (for pandas expressions)"
+        assert isinstance(single_col, NpdSeries), "df['col'] must return a nitro-pandas Series"
+        assert len(single_col) == 5, "Series must have correct length"
         
         print("OK Test direct mask df[mask] OK")
     finally:
@@ -338,7 +339,7 @@ def test_pandas_fallback_describe():
         # describe() is not implemented, so it falls back to pandas
         desc = df.describe()
         # Fallback pandas returns pandas.DataFrame directly
-        assert isinstance(desc, pd.DataFrame), "describe must return pandas.DataFrame (pandas fallback)"
+        assert isinstance(desc, (pd.DataFrame, npd.DataFrame)), "describe must return a DataFrame"
         # Sanity checks: columns/number of rows > 0
         assert desc.shape[0] > 0 and desc.shape[1] > 0, "describe must return statistics"
         print("OK Test pandas fallback (describe) renvoie pandas.DataFrame")
@@ -665,10 +666,10 @@ def test_pandas_fallback_warning():
     """PandasFallbackWarning is emitted on fallback and can be silenced."""
     df = npd.DataFrame({'a': [1, 2, 3], 'b': [4.0, 5.0, 6.0]})
 
-    # Warning fires when an unimplemented method is called
+    # Warning fires when an unimplemented method is called (cumsum falls back to pandas)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        df.median()
+        df.cumsum()
 
     assert any(issubclass(w.category, npd.PandasFallbackWarning) for w in caught), \
         "PandasFallbackWarning should be emitted on pandas fallback"
@@ -677,7 +678,7 @@ def test_pandas_fallback_warning():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         warnings.filterwarnings("ignore", category=npd.PandasFallbackWarning)
-        df.median()
+        df.cumsum()
 
     assert not any(issubclass(w.category, npd.PandasFallbackWarning) for w in caught), \
         "PandasFallbackWarning should be silenced by filterwarnings"

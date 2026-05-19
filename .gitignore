@@ -143,3 +143,6 @@ debug-pandas/
 # PyPI credentials
 .pypirc
 
+# Local Claude context (never push)
+CLAUDE.md
+

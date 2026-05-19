@@ -57,6 +57,20 @@ from test_groupby import (
     test_groupby_agg_lambda,
 )
 
+from test_profiling import (
+    test_profile_compare_returns_comparison,
+    test_profile_compare_rows_structure,
+    test_profile_compare_str,
+    test_profile_compare_return_dict,
+    test_profile_compare_return_dataframe,
+    test_profile_compare_assert_equal_passes,
+    test_profile_compare_assert_equal_fails,
+    test_profile_compare_n_runs,
+    test_profile_compare_warmup,
+    test_profile_compare_fallback_detected,
+    test_profile_compare_to_dataframe,
+)
+
 if __name__ == "__main__":
     # Tests IO
     test_read_csv()
@@ -107,5 +121,18 @@ if __name__ == "__main__":
     test_groupby_lazy()
     test_groupby_agg_lambda()
     
+    # Tests profiling
+    test_profile_compare_returns_comparison()
+    test_profile_compare_rows_structure()
+    test_profile_compare_str()
+    test_profile_compare_return_dict()
+    test_profile_compare_return_dataframe()
+    test_profile_compare_assert_equal_passes()
+    test_profile_compare_assert_equal_fails()
+    test_profile_compare_n_runs()
+    test_profile_compare_warmup()
+    test_profile_compare_fallback_detected()
+    test_profile_compare_to_dataframe()
+
     print("\nOK Tous les tests sont passes avec succes !")
 

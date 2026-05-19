@@ -28,5 +28,10 @@ Documentation = "https://github.com/Wassim17Labdi/nitro-pandas#readme"
 Issues = "https://github.com/Wassim17Labdi/nitro-pandas/issues"
 "Source Code" = "https://github.com/Wassim17Labdi/nitro-pandas"
 
+[project.optional-dependencies]
+profile = [
+    "line-profiler>=5.0.2",
+]
+
 [tool.hatchling.build.targets.wheel]
 packages = ["nitro_pandas"]

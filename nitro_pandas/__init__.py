@@ -26,6 +26,7 @@ Example:
 from .io import *
 from .dataframe import DataFrame, PandasFallbackWarning
 from .lazyframe import LazyFrame
+from .profiling import profile_compare
 
 # Export useful Polars expressions for user convenience
 from polars import (
@@ -72,6 +73,7 @@ __all__ = [
     'read_json',
     'read_json_lazy',
     'concat',
+    'profile_compare',
     # Polars expressions
     'col', 'lit', 'when', 'all', 'any', 'count', 'min', 'max', 'mean',
     'sum', 'std', 'var', 'first', 'last', 'concat_str',
