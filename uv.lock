@@ -77,7 +77,7 @@ wheels = [
 
 [[package]]
 name = "nitro-pandas"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "fastexcel" },
@@ -93,8 +93,8 @@ requires-dist = [
     { name = "fastexcel", specifier = ">=0.7.0" },
     { name = "line-profiler", specifier = ">=5.0.2" },
     { name = "openpyxl", specifier = ">=3.1.5" },
-    { name = "pandas", specifier = ">=2.2.3" },
-    { name = "polars", specifier = ">=1.30.0" },
+    { name = "pandas", specifier = ">=2.2.3,<3" },
+    { name = "polars", specifier = ">=1.30.0,<2" },
     { name = "pyarrow", specifier = ">=20.0.0" },
 ]
 

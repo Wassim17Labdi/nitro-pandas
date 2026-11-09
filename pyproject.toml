@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nitro-pandas"
-version = "0.2.0"
+version = "0.2.1"
 description = "A pandas-like API wrapper around Polars for high-performance data manipulation"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -17,8 +17,8 @@ dependencies = [
     "fastexcel>=0.7.0",
     "line-profiler>=5.0.2",
     "openpyxl>=3.1.5",
-    "pandas>=2.2.3",
-    "polars>=1.30.0",
+    "pandas>=2.2.3,<3",
+    "polars>=1.30.0,<2",
     "pyarrow>=20.0.0",
 ]
 
