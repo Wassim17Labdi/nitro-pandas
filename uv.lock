@@ -94,7 +94,7 @@ requires-dist = [
     { name = "line-profiler", specifier = ">=5.0.2" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=2.2.3,<3" },
-    { name = "polars", specifier = ">=1.30.0,<2" },
+    { name = "polars", specifier = ">=1.30.0,<1.36" },
     { name = "pyarrow", specifier = ">=20.0.0" },
 ]
 
