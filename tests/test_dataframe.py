@@ -379,8 +379,10 @@ def test_pandas_fallback_module_level():
     na_value = npd.NA
     assert na_value is pd.NA, "npd.NA must be pandas.NA"
     
-    # Test 5: Verify that npd.get_dummies is actually pandas.get_dummies
-    assert npd.get_dummies is pd.get_dummies, "npd.get_dummies must be pandas.get_dummies (fallback)"
+    # Test 5: Module-level pandas functions accept nitro-pandas objects
+    dummies = npd.get_dummies(npd.DataFrame({"a": ["x", "y"]}))
+    assert isinstance(dummies, pd.DataFrame), "npd.get_dummies must run through pandas"
+    assert dummies.shape == (2, 2), "npd.get_dummies must expand the categories"
     
     # Test 6: Verify that non-existent function raises AttributeError
     try:

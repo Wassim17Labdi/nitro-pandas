@@ -5,6 +5,13 @@ import os
 # Ajouter le répertoire parent au path pour les imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from test_pandas_parity import (
+    test_pandas_parity,
+    test_series_truth_value_is_ambiguous,
+    test_read_csv_matches_pandas,
+    test_to_csv_matches_pandas,
+)
+
 from test_io import (
     test_read_csv,
     test_read_parquet,
@@ -133,6 +140,12 @@ if __name__ == "__main__":
     test_profile_compare_warmup()
     test_profile_compare_fallback_detected()
     test_profile_compare_to_dataframe()
+
+    # Tests de parite pandas
+    test_pandas_parity()
+    test_series_truth_value_is_ambiguous()
+    test_read_csv_matches_pandas()
+    test_to_csv_matches_pandas()
 
     print("\nOK Tous les tests sont passes avec succes !")
 

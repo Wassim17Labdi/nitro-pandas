@@ -23,8 +23,14 @@ Example:
     >>> df.groupby('category')['value'].mean()
 """
 
+import functools
+import inspect
+
+import pandas as pd
+import polars as pl
+
 from .io import *
-from .dataframe import DataFrame, PandasFallbackWarning
+from .dataframe import DataFrame, PandasFallbackWarning, Series, _from_pandas, _pandas_arg, _warn_fallback
 from .lazyframe import LazyFrame
 from .profiling import profile_compare
 
@@ -35,29 +41,31 @@ from polars import (
 )
 
 
-def concat(dfs: list[DataFrame], axis: int = 0) -> DataFrame:
-    """
-    Concatenate multiple DataFrames (pandas-like function).
-    
-    Args:
-        dfs: List of DataFrames to concatenate
-        axis: 0 for vertical (row-wise), 1 for horizontal (column-wise)
-        
-    Returns:
-        DataFrame: Concatenated DataFrame
-        
-    Example:
-        >>> import nitro_pandas as npd
-        >>> df1 = npd.DataFrame({'a': [1, 2]})
-        >>> df2 = npd.DataFrame({'a': [3, 4]})
-        >>> result = npd.concat([df1, df2])
-    """
-    import polars as pl
-    if axis == 0:
-        out = pl.concat([d._df for d in dfs], how="vertical")
-    else:
-        out = pl.concat([d._df for d in dfs], how="horizontal")
-    return DataFrame(out)
+def _polars_frame(obj):
+    if isinstance(obj, Series):
+        return obj._series.to_frame()
+    if isinstance(obj, pd.DataFrame):
+        return _from_pandas(obj)
+    obj._flush_pending()
+    return obj._df
+
+
+def concat(objs, axis=0, ignore_index=False, **kwargs):
+    """Concatenate DataFrames or Series; extra pandas options go through pandas."""
+    if kwargs:
+        _warn_fallback("concat")
+        return pd.concat(_pandas_arg(list(objs)), axis=axis, ignore_index=ignore_index, **kwargs)
+    frames = [_polars_frame(o) for o in objs]
+    if axis in (1, "columns"):
+        return DataFrame(pl.concat(frames, how="horizontal"))
+    same_schema = len({tuple(f.schema.items()) for f in frames}) == 1
+    return DataFrame(pl.concat(frames, how="vertical" if same_schema else "diagonal_relaxed"))
+
+
+def merge(left, right, **kwargs):
+    """Module-level merge, as pd.merge."""
+    frame = DataFrame(_from_pandas(left)) if isinstance(left, pd.DataFrame) else left
+    return frame.merge(right, **kwargs)
 
 
 __all__ = [
@@ -73,6 +81,7 @@ __all__ = [
     'read_json',
     'read_json_lazy',
     'concat',
+    'merge',
     'profile_compare',
     # Polars expressions
     'col', 'lit', 'when', 'all', 'any', 'count', 'min', 'max', 'mean',
@@ -98,12 +107,19 @@ def __getattr__(name: str):
     Raises:
         AttributeError: If attribute doesn't exist in pandas either
     """
-    import pandas as pd
-    
     if not hasattr(pd, name):
         raise AttributeError(
             f"module 'nitro_pandas' has no attribute '{name}'. "
             f"Also not found in pandas module."
         )
-    
-    return getattr(pd, name)
+
+    attr = getattr(pd, name)
+    if not inspect.isfunction(attr):
+        return attr
+
+    @functools.wraps(attr)
+    def fallback(*args, **kwargs):
+        _warn_fallback(name)
+        return attr(*_pandas_arg(list(args)), **_pandas_arg(kwargs))
+
+    return fallback

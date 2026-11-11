@@ -204,14 +204,14 @@ def test_groupby_agg_lambda():
         'score': [100, 200, 300, 400, 150, 500]
     })
     
-    # Test that lambda functions raise ValueError
-    try:
-        df.groupby("category").agg({
+    # Lambda functions run through pandas
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result_lambda = df.groupby("category").agg({
             "value": lambda x: x.sum() / len(x)
         })
-        assert False, "Lambda functions should raise ValueError"
-    except ValueError as e:
-        assert "Lambda functions are not supported" in str(e), f"Expected lambda error message, got: {e}"
+    assert any(issubclass(w.category, npd.PandasFallbackWarning) for w in caught), "Lambda must warn about the fallback"
+    assert result_lambda.loc["A", "value"] == 15, "Lambda aggregation must be computed by pandas"
     
     # Verify that string functions still work
     result_mean = df.groupby("category").agg({

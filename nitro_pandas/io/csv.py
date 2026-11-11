@@ -11,10 +11,30 @@ Key features:
 - Automatic parameter mapping from pandas to Polars
 """
 
+import pandas as pd
 import polars as pl
 from typing import Optional, Union, List
-from ..dataframe import DataFrame
+from ..dataframe import DataFrame, _polars_dtype, _warn_fallback
 from ..lazyframe import LazyFrame
+
+_PANDAS_ONLY_OPTIONS = {
+    "index_col", "converters", "thousands", "date_format", "dayfirst", "on_bad_lines", "engine", "chunksize",
+    "iterator", "skipfooter", "quotechar", "keep_default_na", "na_filter", "true_values", "false_values",
+    "skip_blank_lines", "escapechar", "skipinitialspace", "compression",
+}
+
+_PANDAS_NA_STRINGS = [
+    "", "#N/A", "#N/A N/A", "#NA", "-1.#IND", "-1.#QNAN", "-NaN", "-nan", "1.#IND", "1.#QNAN",
+    "<NA>", "N/A", "NA", "NULL", "NaN", "None", "n/a", "nan", "null",
+]
+
+
+def _parse_date_column(series: pl.Series) -> pl.Series:
+    """Return the parsed column, or the original when a value does not parse (as pandas does)."""
+    for parsed in (series.str.to_datetime(strict=False), series.str.to_date(strict=False).cast(pl.Datetime("us"))):
+        if parsed.null_count() == series.null_count():
+            return parsed
+    return series
 
 
 def read_csv(
@@ -72,7 +92,28 @@ def read_csv(
     """
     # Map pandas-style parameters to Polars equivalents
     separator = delimiter if delimiter is not None else sep
-    
+
+    parse_dates = kwargs.pop("parse_dates", None)
+    resolved_dtype = (
+        {col: _polars_dtype(t) for col, t in dtype.items()} if isinstance(dtype, dict)
+        else _polars_dtype(dtype) if dtype is not None else None
+    )
+    unresolved_dtype = (
+        any(t is None for t in resolved_dtype.values()) if isinstance(resolved_dtype, dict)
+        else dtype is not None and resolved_dtype is None
+    )
+    dates_unsupported = parse_dates is not None and not (
+        isinstance(parse_dates, list) and all(isinstance(c, str) for c in parse_dates)
+    )
+    if _PANDAS_ONLY_OPTIONS & kwargs.keys() or unresolved_dtype or dates_unsupported or isinstance(na_values, dict):
+        _warn_fallback("read_csv")
+        if parse_dates is not None:
+            kwargs["parse_dates"] = parse_dates
+        return pd.read_csv(
+            filepath_or_buffer, sep=separator, header=header, names=names, usecols=usecols, nrows=nrows,
+            skiprows=skiprows, na_values=na_values, encoding=encoding, dtype=dtype, **kwargs,
+        )
+
     # Handle header parameter
     if header == "infer":
         has_header = True
@@ -115,17 +156,19 @@ def read_csv(
         if usecols is not None:
             pl_kwargs["columns"] = usecols
         
-        # Handle null value specification
-        if na_values is not None:
-            if isinstance(na_values, list):
-                pl_kwargs["null_values"] = na_values
-            elif isinstance(na_values, str):
-                pl_kwargs["null_values"] = [na_values]
-            elif isinstance(na_values, dict):
-                # Polars doesn't support per-column null values like pandas
-                # Skip dict na_values for now
-                pass
+        # As in pandas, na_values extends the default missing-value markers.
+        extra_na = [na_values] if isinstance(na_values, str) else list(na_values or [])
+        pl_kwargs["null_values"] = _PANDAS_NA_STRINGS + extra_na
         
+        # Types are applied at parse time: casting afterwards would lose leading zeros.
+        if isinstance(resolved_dtype, dict) and names is None:
+            pl_kwargs["schema_overrides"] = {
+                col: t for col, t in resolved_dtype.items()
+                if usecols is None or col in usecols
+            }
+        elif resolved_dtype == pl.String:
+            pl_kwargs["infer_schema_length"] = 0
+
         # Add any additional Polars-specific parameters
         pl_kwargs.update(kwargs)
         
@@ -135,16 +178,19 @@ def read_csv(
     except Exception as e:
         raise ValueError(f"Error reading CSV file: {str(e)}")
     
-    # Apply dtype casting if provided
-    if dtype is not None:
-        for col, target_type in dtype.items():
-            if col in df.columns:
-                df = df.with_columns(pl.col(col).cast(target_type))
-    
     # Apply column names if provided
     if names is not None:
         df.columns = names
-    
+
+    if isinstance(resolved_dtype, dict) and names is not None:
+        df = df.with_columns([pl.col(c).cast(t) for c, t in resolved_dtype.items() if c in df.columns])
+    elif resolved_dtype is not None and not isinstance(resolved_dtype, dict) and resolved_dtype != pl.String:
+        df = df.cast(resolved_dtype)
+
+    for col in parse_dates or []:
+        if df.schema.get(col) == pl.String:
+            df = df.with_columns(_parse_date_column(df[col]).alias(col))
+
     return DataFrame(df)
 
 
