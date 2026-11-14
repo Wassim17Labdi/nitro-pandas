@@ -2,7 +2,39 @@
 
 All notable changes to nitro-pandas are documented here.
 
-## [Unreleased]
+## [1.0.0] — 2026-11-14
+
+Compatibility release: pandas code runs unchanged. Tested against pandas on 297 everyday calls: 0 crashes (58 in 0.2.x), same results as pandas.
+
+### Added
+- GroupBy: `size`, `nunique`, `first`, `last`, `std`, `var`, `median`, named aggregations, `as_index`, `sort`, `dropna`, iteration, and a pandas fallback for everything else
+- pandas arguments on native methods: `inplace=True`, `drop(columns=...)`, `to_csv(index=False, sep=...)`, `numeric_only`; unknown arguments run through pandas instead of failing
+- `len(df)`, `df.col`, `for col in df`, `"col" in df`, `del df[col]`, `insert`, `pop`, `copy`, `assign`, `duplicated`, `dropna`, `mean`, `sum`, `min`, `max`, `count`, `nunique`
+- `df.loc[mask, col] = value` and `df.iloc[i, j] = value`
+- `.str`: `lower`, `upper`, `strip`, `startswith`, `endswith`, `len`, slicing, `replace`; `.dt` fields as pandas properties (`.dt.year`, `.dt.dayofweek`...)
+- `read_csv`: `parse_dates`, pandas missing-value markers (`NA`, `null`...), dtypes applied at parse time (keeps leading zeros); pandas-only options run through pandas
+- `npd.merge`, `npd.concat(ignore_index=...)`; pandas module functions (`cut`, `get_dummies`...) accept nitro-pandas objects
+- `tests/test_pandas_parity.py`: compares results with pandas
+
+### Changed
+- GroupBy results are sorted by key and drop null keys, as in pandas
+- `drop_duplicates` keeps row order; comparisons treat missing values like pandas (`~mask` keeps them)
+- `merge` applies pandas suffixes, matches null keys and keeps pandas row order
+- `reset_index()` adds an `index` column unless `drop=True` (grouped results keep their keys)
+- `rename(mapping)` without `columns=` no longer renames columns, as in pandas
+- `mean`, `sum`, `median`, `std`, `count`, `nunique`, `describe` and `corr` return pandas objects, as in pandas
+
+### Fixed
+- Pending column assignments were ignored by `rename`, `drop`, `astype`, `fillna` and other methods
+- `str.replace` replaced only the first match; `Series.head()` returned 10 rows
+- Fallback warnings now point at the user's line, so `profile_compare` flags them reliably
+
+## [0.2.1] — 2026-11-09
+
+### Fixed
+- Fresh installs picked up Polars 2 and pandas 3, which break nitro-pandas: dependencies pinned to `polars>=1.30.0,<1.36` and `pandas>=2.2.3,<3`
+
+## [0.2.0] — 2026-05-20
 
 ### Added
 - `npd.profile_compare()` — line-by-line performance comparison between pandas and nitro-pandas using `line_profiler` (optional dependency: `pip install 'nitro-pandas[profile]'`)

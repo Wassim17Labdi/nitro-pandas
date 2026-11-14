@@ -5,6 +5,8 @@
 
 **A high-performance pandas-like DataFrame library powered by Polars**
 
+[![PyPI](https://img.shields.io/pypi/v/nitro-pandas.svg)](https://pypi.org/project/nitro-pandas/)
+[![Downloads](https://static.pepy.tech/badge/nitro-pandas)](https://pepy.tech/projects/nitro-pandas)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -20,7 +22,8 @@
 - 🐼 **Pandas-like API** — Use familiar pandas syntax without learning a new library
 - ⚡ **Polars Backend** — Leverage Polars' optimized Rust engine for maximum performance
 - 📊 **Comprehensive I/O** — Read/write CSV, Parquet, JSON, and Excel files
-- 🎯 **Automatic Fallback** — Seamless fallback to pandas for unimplemented methods
+- ✅ **Tested against pandas** — A parity test suite compares results with pandas, missing values included
+- 🎯 **Automatic Fallback** — Seamless fallback to pandas for unimplemented methods and arguments
 - 🔬 **Built-in Profiler** — Line-by-line comparison of your pandas code vs nitro-pandas with `profile_compare`
 - 🔧 **Type Safety** — Support for pandas-like type casting and schema inference
 
@@ -28,9 +31,23 @@
 
 **nitro-pandas** bridges the gap between pandas' user-friendly API and Polars' exceptional performance. Replace `import pandas as pd` with `import nitro_pandas as npd` and get faster code without changing anything else.
 
+### 🎂 What's new in 1.0
+
+nitro-pandas turns one, and 1.0 is about one promise: your pandas code runs unchanged.
+
+We ran 297 everyday pandas calls (groupby, merge, `.str`, `.dt`, `inplace`, `read_csv`...) on a real dataset with both libraries and compared every result:
+
+| | v0.2 | v1.0 |
+|---|---|---|
+| Calls that crash | 58 of 226 | **0 of 297** |
+| Results different from pandas | several, silently | **none** |
+| Speed vs pandas on native operations (1M rows) | | **~6x faster** |
+
+Anything not yet implemented natively runs through pandas, with a `PandasFallbackWarning`. See the [CHANGELOG](CHANGELOG.md) for the full list.
+
 ### Performance Comparison
 
-Benchmarked on the [Books Rating dataset](https://www.kaggle.com/datasets/mohamedbakhet/amazon-books-reviews) (~3M rows, 10 columns) using `npd.profile_compare`. All times are averaged wall-clock seconds.
+Benchmarked with v0.2.0 on the [Books Rating dataset](https://www.kaggle.com/datasets/mohamedbakhet/amazon-books-reviews) (~3M rows, 10 columns) using `npd.profile_compare`. All times are averaged wall-clock seconds.
 
 | Operation | pandas | nitro-pandas | Speedup |
 |-----------|--------|-------------|---------|
@@ -67,8 +84,8 @@ pip install nitro-pandas
 
 - **Python 3.11+**
 - **Dependencies** (automatically installed):
-  - `polars>=1.30.0` — High-performance DataFrame engine
-  - `pandas>=2.2.3` — For fallback methods
+  - `polars>=1.30.0,<1.36` — High-performance DataFrame engine
+  - `pandas>=2.2.3,<3` — For fallback methods
   - `line-profiler>=5.0.2` — For `profile_compare`
   - `fastexcel>=0.7.0` — Fast Excel reading
   - `openpyxl>=3.1.5` — Excel file support
@@ -130,17 +147,21 @@ top10 = df.nlargest(10, 'age')
 # Pivot table
 pivot = df.pivot_table(values='age', index='city', aggfunc='mean')
 
-# Summary statistics
+# Summary statistics (pandas objects, as in pandas)
 df.describe()
-df.std()
-df.median()
-df.corr()
+df.mean(numeric_only=True)
+df.median(numeric_only=True)
+df.corr(numeric_only=True)
+
+# In-place updates work as in pandas
+df.dropna(subset=['age'], inplace=True)
+df.loc[df['age'] > 30, 'senior'] = True
 ```
 
 ### Writing Files
 
 ```python
-df.to_csv('output.csv')
+df.to_csv('output.csv')          # no index column, nitro-pandas has no index
 df.to_parquet('output.parquet')
 df.to_json('output.json')
 df.to_excel('output.xlsx')
@@ -206,26 +227,35 @@ df[['col1', 'col2']]        # Returns DataFrame
 df[df['age'] > 30]          # Boolean filtering
 df.loc[df['age'] > 30, 'name']
 df.iloc[0:5, 0:2]
+df.loc[df['age'] > 30, 'name'] = 'senior'   # assignment
+len(df), df.age, 'age' in df, list(df)
 ```
 
 #### Transformations
 ```python
 df.astype({'id': 'int64', 'name': 'str'})
 df.rename(columns={'old': 'new'})
-df.drop(labels=['col1'], axis=1)
+df.drop(columns=['col1'])
 df.fillna({'column': 0})
-df.sort_values('age', ascending=False)
+df.dropna(subset=['column'])
+df.sort_values(['a', 'b'], ascending=[False, True])
 df.drop_duplicates(subset=['id'])
+df.assign(total=lambda d: d['price'] * d['qty'])
+df['name'].str.lower()
+df['date'].dt.year
 ```
 
 #### Aggregations (native, no pandas fallback)
 ```python
 df.describe()
-df.std()
-df.median()
-df.corr()
+df.mean(numeric_only=True)
+df.count()
+df.nunique()
 df.groupby('col')['val'].mean()
-df.groupby('col')['val'].count()
+df.groupby('col')['val'].nunique()
+df.groupby('col').size()
+df.groupby('col').agg(total=('val', 'sum'), best=('val', 'max'))
+df.merge(other, on='id', how='left')
 df.nlargest(100, 'col')
 df.sample(n=1000, random_state=42)
 df.pivot_table(values='val', index='col', aggfunc='mean')
@@ -274,9 +304,9 @@ result = df.groupby('category')['value'].mean()
 Key differences to be aware of:
 
 - **`df['col']`** returns a nitro-pandas `Series` (not a pandas Series) — it's compatible with boolean indexing and most pandas operations
-- **No `inplace` parameter** — all operations return new DataFrames
+- **No index** — grouped results are DataFrames with the keys as columns, `reset_index()` numbers rows from 0, and `to_csv` writes no index column unless `index=True`
 - **No mixed column types** — each column must have a consistent type (Polars requirement)
-- **Unimplemented methods** fall back to pandas automatically with a `PandasFallbackWarning`
+- **Unimplemented methods and arguments** fall back to pandas automatically with a `PandasFallbackWarning`
 
 ```python
 import warnings
@@ -301,6 +331,7 @@ nitro-pandas/
 │   ├── test_profiling.py
 │   ├── test_groupby.py
 │   ├── test_io.py
+│   ├── test_pandas_parity.py
 │   └── test_runner.py
 ├── pyproject.toml
 └── CHANGELOG.md
